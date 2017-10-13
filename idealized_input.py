@@ -16,6 +16,7 @@ import sys
 import glob as glob
 import numpy as np
 from math import radians, cos, sin, asin, sqrt
+from datetime import datetime,timedelta
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -133,8 +134,6 @@ def barometric_formula(h):
 
 	P = Pb*(Tb/(Tb+Lb*(h-hb)))**(g0*M/(R*Lb))		# as seen in, e.g. https://en.wikipedia.org/wiki/Barometric_formula
 	return P
-
-
 
 def mwrite(string):
 	sys.stdout.write(string)
@@ -359,7 +358,7 @@ lat=latN*dlat							# array that contains all discrete latitudes
 lon_gridded, lat_gridded = np.meshgrid(lon, lat)	# grids of longitude and latitude
 
 Ndays		= 1 						# number of days for which forcing should be generated
-Ntime		= Ndays*48
+Ntime		= Ndays*24
 
 # GENERATE ICAR HIGH RESOLUTION TOPGRAPHY
 i_topo  	= np.empty(Nlat*Nlon).reshape(Nlat,Nlon)	# array that will contain topography elevation in meters
@@ -395,8 +394,16 @@ icar_topo_ds	= xa.Dataset(
 
 icar_topo_ds.to_netcdf("./ideal_output/ideal_topo.nc",format='NETCDF4')	
 
+dtime_base  	  = datetime(1900,1,1,0,0,0)
+dtime_start 	  = datetime(2017,1,1,0,0,0)
+dtime_end   	  = dtime_start + timedelta(days=Ndays)
+dtime_diff_start  = (dtime_start-dtime_base)
+dtime_diff_end	  = (dtime_end-dtime_base)
+hours_since_start = dtime_diff_start.days*24.0	+ dtime_diff_start.seconds/3600.0
+hours_since_end	  = dtime_diff_end.days*24.0	+ dtime_diff_end.seconds/3600.0
+time_list	= np.arange(hours_since_start,hours_since_end,1.0)
 
-i_Time		= pd.date_range('2017-01-01', freq='H', periods=Ntime)
+i_Time		= time_list
 i_hgt 		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
 i_xlong		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
 i_xlat		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
@@ -494,5 +501,9 @@ icar_topo_ds	= xa.Dataset(
 								'west_east':np.arange(0,Nlon,1.0)
 							}
 						)
+
+icar_topo_ds.Time.attrs['units']='hours since 1900-01-01'
+icar_topo_ds.Time.attrs['calendar']='gregorian'
+#print icar_topo_ds.Time.attrs
 
 icar_topo_ds.to_netcdf("./ideal_output/ideal_forcing.nc",format='NETCDF4')	
