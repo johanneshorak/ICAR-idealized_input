@@ -18,6 +18,50 @@ import numpy as np
 from math import radians, cos, sin, asin, sqrt
 from datetime import datetime,timedelta
 
+# identify which boundaries are upstream. check ws_angle_0 since this is not
+# adjusted to yield correct results with sin/cos
+# (0...north, 90deg ...east, 180deg ...south, 270deg ...west)
+def set_upstream(ws_angle_0):
+	upstream = None
+	if ws_angle_0 == 0:
+		upstream = "n"
+	elif ws_angle_0 == 90:
+		upstream = "e"
+	elif ws_angle_0 == 180:
+		upstream = "s"
+	elif ws_angle_0 == 270:
+		upstream = "w"
+	elif ws_angle_0 < 90 and ws_angle_0 > 0:
+		upstream = "ne"
+	elif ws_angle_0 < 180 and ws_angle_0 > 90:
+		upstream = "se"
+	elif ws_angle_0 < 270 and ws_angle_0 > 180:
+		upstream = "sw"
+	elif ws_angle_0 < 360 and ws_angle_0 > 270:
+		upstream = "nw"
+	return upstream
+
+def is_upstream(nx,ny,maxLon,maxLat,upstream):
+	#print 'is_upstream ',nx," ",ny," ",maxLon," ",maxLat," ",upstream
+	if upstream == 'n' and ny==0:
+		return True
+	elif upstream == 's' and ny==maxLat:
+		return True
+	elif upstream == 'e' and nx==maxLon:
+		return True
+	elif upstream == 'w' and nx==0:
+		return True
+	elif upstream == 'ne' and (nx==maxLon or ny==0):
+		return True
+	elif upstream == 'se' and (nx==maxLon or ny==maxLat):
+		return True
+	elif upstream == 'nw' and (nx==0 or ny==0):
+		return True
+	elif upstream == 'sw' and (nx==0 or ny==maxLat):
+		return True
+	return False
+					
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points 
@@ -43,6 +87,10 @@ def tpot_from_N(N,z):
 def tpot_from_t_and_p(T,p):
 	theta = T*(10.0**5.0/p)**(2.0/7.0)
 	return theta
+
+def t_from_tpot(tpot,p):
+	t = tpot/((10.0**5.0/p)**(2.0/7.0))
+	return t
 
 def t_of_z(h):
 	if 0<= h and h < 11000:
@@ -135,6 +183,18 @@ def barometric_formula(h):
 	P = Pb*(Tb/(Tb+Lb*(h-hb)))**(g0*M/(R*Lb))		# as seen in, e.g. https://en.wikipedia.org/wiki/Barometric_formula
 	return P
 
+def calculate_saturation_pressures(t):
+	#result = 611.21 * 10**((7.5*t)/(t+237.3))
+	result = 610.8*np.exp(17.27*t/(t+237.3)) # in Pa, t in deg. C
+	return result
+
+def calculate_qv_from_rh(rh,prs_sat,prs):
+	c_Rwv  = 	461.5 # J/kgK spec. gas constant for water vapor
+	c_Rair =	286.9 # J/kgK spec. gas constant for dry air
+	result = rh/100.0 * ((c_Rair/c_Rwv)*(prs_sat/prs))
+	return result
+
+
 def mwrite(string):
 	sys.stdout.write(string)
 	sys.stdout.flush()
@@ -158,10 +218,11 @@ Nz=None
 ztop=None
 Nbv=None
 Nbvconst=False
+rh=None
 
 # READ COMMAND LINE OPTIONS
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh="])
 except getopt.GetoptError:
 	print 'error occured, syntax:'
 	print 'evaluator.py --mode=<mode> --scnconfig=<scenario_config> --reafile=<forcing file> --hrtopo=<high resolution topography>'
@@ -204,6 +265,8 @@ for opt, arg in opts:
 	elif opt in ("--Nbv"):
 		Nbv = float(arg)
 		Nbvconst = True
+	elif opt in ("--rh"):
+		rh = float(arg)
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -219,7 +282,7 @@ for opt, arg in opts:
 # Nz		... how many z-levels to use in forcing
 # ztop		... how far above the topography the top level is to be placed in km
 # Nbv		... Brunt Vaisala frequency, supply a constant Brunt Vaisala frequency and calculated potential temperature from there in s**-1
-
+# rh		... relative humidity upstream in %
 # topo	... which topography to use - standard: witch of agnesi
 # a0	... parameter 0 for idealized topography
 # a1	... parameter 1 for idealized topography
@@ -256,9 +319,11 @@ if ws is None:
 	
 if ws_angle is None:
 	print "    {:20s}: no angle supplied, using ws_angle=270.0 degree (westwind)".format("ws_angle")
-	ws_angle = 270.0+90.0		# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
+	ws_angle_0	= 270.0
+	ws_angle	= ws_angle_0+90.0		# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
 else:
-	ws_angle+=90.0				# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
+	ws_angle_0	= ws_angle
+	ws_angle	+=90.0				# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
 
 if Nz is None:
 	print "    {:20s}: number of z-levels not supplied, using Nz=30".format("Nz")
@@ -314,10 +379,10 @@ else:
 	print " error: either (dlon,dlat) and (Llon,Llat) or (dx,dy) and (Lx,Ly) must be specified!"
 	sys.exit(1)
 
-
-dz	   = ztop*1000.0/float(Nz)							# thickness of layers in m
-dg_lon = haversine(lonc-0.5,latc,lonc+0.5,latc)			# km per degree of longitude
-dg_lat = haversine(lonc,latc-0.5,lonc,latc+0.5)			# km per degree of latitude
+upstream	= set_upstream(ws_angle_0)
+dz			= ztop*1000.0/float(Nz)						# thickness of layers in m
+dg_lon		= haversine(lonc-0.5,latc,lonc+0.5,latc)	# km per degree of longitude
+dg_lat		= haversine(lonc,latc-0.5,lonc,latc+0.5)	# km per degree of latitude
 
 Nlon = int(np.ceil(Llon/dlon))							# grid cells along longitudinal axis
 if Nlon % 2 == 0:										# go for uneven number of grid cells so that
@@ -342,6 +407,11 @@ print "    ztop               : {:6.2f} km".format(ztop)
 print "    dz                 : {:6.2f} m".format(dz)
 print "    *"
 print "    grid cells         : {:6n}        {:6n}".format(Nlon,Nlat)
+print "    upstream           : {:2s}".format(upstream)
+
+if rh is not None:
+	print "    rh upstream        : {:3.1f} %".format(rh)
+	
 # generate the grid
 
 Nlon_l = -(Nlon-1.0)/2.0				# lowest longitudinal N 
@@ -428,6 +498,7 @@ print "    *"
 
 p0 			= 101325.0 		# pressure at h=0m, Pa
 
+
 i_xlong[:]	= lon_gridded
 i_xlat[:]	= lat_gridded
 
@@ -452,15 +523,30 @@ for ntime in range(0,1):
 				p=barometric_formula(z)
 				
 				if Nbvconst == True:
-					tpot = tpot_from_N(Nbv,z)
+					tpot	= tpot_from_N(Nbv,z)
+					t		= t_from_tpot(tpot,p)
 				else:
-					tpot = tpot_from_t_and_p(t_of_z(z),p)
+					t		= t_of_z(z)
+					tpot	= tpot_from_t_and_p(t,p)
 					
 				i_u[ntime,nz,nlat,nlon] = u
 				i_v[ntime,nz,nlat,nlon] = v
 				i_p[ntime,nz,nlat,nlon] = p
 				i_ph[ntime,nz,nlat,nlon] = z
 				i_tpot[ntime,nz,nlat,nlon] = tpot
+				
+				psat = calculate_saturation_pressures(t-273.15)
+				
+				if rh is not None:
+					qv	 = calculate_qv_from_rh(rh,psat,p)
+				
+				
+				# set quantities that are to be advected from upstream
+				if upstream is not None:
+					if is_upstream(nlon,nlat,len(lonN),len(latN),upstream):
+						if rh is not None:
+							#print " qvapor == {:f} at {:n}/{:n}".format(qv,nx,ny)
+							i_qvapor[ntime,nz,nlat,nlon]=qv
 
 for ntime in range(1,Ntime):
 	mwrite("\r    working on timestep {:3n}/{:3n}".format(ntime+1,Ntime))
