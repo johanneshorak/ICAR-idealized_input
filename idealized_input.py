@@ -4,7 +4,7 @@
 # -------------------------------------------------------
 # this script generates two files:
 # * high resolution idealized topography and
-# * high resolution forcing file with idealized conditions.
+# * forcing file with idealized conditions.
 # the specifics are supplied to the script with
 # the corresponding parameters.
 # VERY BASIC SCRIPT SO FAR!
@@ -17,6 +17,63 @@ import glob as glob
 import numpy as np
 from math import radians, cos, sin, asin, sqrt
 from datetime import datetime,timedelta
+
+def print_help():
+	print '  error occured, syntax:'
+	print '  python idealized_input.py [options]'
+	print '  possible options: '
+	print '    {:10s}... longitudinal resolution in degrees'.format('dlon')
+	print '    {:10s}... latitudinal resolution in degrees'.format('dlat')
+	print '    {:10s}... longitudinal resolution of forcing in degrees'.format('dlonf')
+	print '    {:10s}... latitudinal resolution of forcing in degrees'.format('dlatf')
+	print '    {:10s}... longitudinal resolution in km'.format('dx')
+	print '    {:10s}... latitudinal resolution in km'.format('dy')
+	print '    {:10s}... longitudinal width of domain in km'.format('Lx')
+	print '    {:10s}... latitudinal width of domain in km'.format('Ly')
+	print '    {:10s}... longitudinal width of domain in degree'.format('Llon')
+	print '    {:10s}... latitudinal width of domain in degree'.format('Llat')
+	print '    {:10s}... windspeed in m/s'.format('ws')
+	print '    {:10s}... direction of flow in degree (0...north, 90deg ...east, 180deg ...south, 270deg ...west)'.format('ws_angle')
+	print '    {:10s}... z-profile to apply to windspeed. Standard: const (no change with z)'.format('ws_profile')
+	print '    {:10s}... how many z-levels to use in forcing'.format('Nz')
+	print '    {:10s}... how far above the topography the top level is to be placed in km'.format('ztop')
+	print '    {:10s}... Brunt Vaisala frequency, supply a constant Brunt Vaisala frequency'.format('Nbv')
+	print '    {:10s}    and calculate potential temperature from there in s**-1'.format('')
+	print '    {:10s}... relative humidity upstream in %'.format('rh')
+	print '    {:10s}... which topography to use - standard: witch of agnesi >>witch<<'.format('topo')
+	print '    {:10s}... parameter 0 for idealized topography'.format('a0')
+	print '    {:10s}... parameter 1 for idealized topography'.format('a1')
+	print ''
+	print '  example of options:'
+	print '    generates an idealized witch of agnes topography with 100% rh upstream'
+	print '    --dx 1 --dy 1 --Lx 200 --Ly 200 --topo witch --a0 1000 --a1 8000 --Nz 30 --ztop 30 --Nbv 0.01 --rh 100 --ws 10 --ws_angle 270'
+
+
+def generate_grid(Nlon, dlon, Nlat, dlat):
+	# generate the grid
+	Nlon_l = -(Nlon-1.0)/2.0				# lowest longitudinal N 
+	Nlon_h = -Nlon_l						# highest longitudinal N
+	Nlat_l = -(Nlat-1.0)/2.0				# lowest latitudinal N
+	Nlat_h = -Nlat_l						# highest latitudinal N
+
+	lonN=np.arange(Nlon_l,Nlon_h+1.0,1.0)	# array that contains number of each longitudinal cell
+	latN=np.arange(Nlat_l,Nlat_h+1.0,1.0)	# array that contains number of each latitudinal cell
+
+	lon=lonN*dlon							# array that contains all discrete longitudes
+	lat=latN*dlat							# array that contains all discrete latitudes
+
+	lon_gridded, lat_gridded = np.meshgrid(lon, lat)	# grids of longitude and latitude
+	return lonN,latN,lon_gridded,lat_gridded
+
+
+def get_no_of_gridcells(Llon,dlon,Llat,dlat):
+	Nlon = int(np.ceil(Llon/dlon))							# grid cells along longitudinal axis
+	if Nlon % 2 == 0:										# go for uneven number of grid cells so that
+		Nlon+=1												# N=0 is at lonc
+	Nlat = int(np.ceil(Llat/dlat))							# grid cells along latitudinal axis
+	if Nlat % 2 == 0:										# see above
+		Nlat+=1
+	return Nlon, Nlat
 
 # identify which boundaries are upstream. check ws_angle_0 since this is not
 # adjusted to yield correct results with sin/cos
@@ -219,13 +276,17 @@ ztop=None
 Nbv=None
 Nbvconst=False
 rh=None
+dlonf=None
+dlatf=None
 
 # READ COMMAND LINE OPTIONS
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh=","dlonf=","dlatf="])
+	if len(opts)==0:
+		print_help()
+		sys.exit(1)
 except getopt.GetoptError:
-	print 'error occured, syntax:'
-	print 'evaluator.py --mode=<mode> --scnconfig=<scenario_config> --reafile=<forcing file> --hrtopo=<high resolution topography>'
+	print_help()
 	sys.exit(2)
 for opt, arg in opts:
 	#print opt," ",arg
@@ -267,9 +328,15 @@ for opt, arg in opts:
 		Nbvconst = True
 	elif opt in ("--rh"):
 		rh = float(arg)
+	elif opt in ("--dlonf"):
+		dlonf = float(arg)
+	elif opt in ("--dlatf"):
+		dlatf = float(arg)
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
+# dlonf		... longitudinal resolution of forcing in degrees
+# dlatf		... latitudinal resolution of forcing in degrees
 # dx		... longitudinal resolution in km
 # dy		... latitudinal resolution in km
 # Lx		... longitudinal width of domain in km
@@ -309,34 +376,6 @@ if topo == 'witch':
 
 print "* Checking supplied parameters"
 print "-----------------------------------------------------------------"
-if ws_profile is None:
-	print "    {:20s}: not supplied, setting windspeed constant with height".format("ws-z-profile")
-	ws_profile='const'
-	
-if ws is None:
-	print "    {:20s}: no backgrond windspeed supplied, using ws=10m/s".format("ws")
-	ws = 10.0
-	
-if ws_angle is None:
-	print "    {:20s}: no angle supplied, using ws_angle=270.0 degree (westwind)".format("ws_angle")
-	ws_angle_0	= 270.0
-	ws_angle	= ws_angle_0+90.0		# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
-else:
-	ws_angle_0	= ws_angle
-	ws_angle	+=90.0				# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
-
-if Nz is None:
-	print "    {:20s}: number of z-levels not supplied, using Nz=30".format("Nz")
-	Nz = 30
-
-if ztop is None:
-	print "    {:20s}: top level height above topography not supplied, using ztop=40km".format("ztop")
-	ztop = 40.0
-	
-if Nbvconst == True:
-	print "    {:20s}: calculating potential temperature so that N =={:8.4f} is constant".format("N",Nbv)
-else:
-	print "    {:20s}: calculating potential temperature from T and p".format("N")	
 
 if not(dlon is None) and not(dlat is None) and not(Llon is None) and not(Llat is None):
 	dx = haversine(lonc-dlon/2.0,latc,lonc+dlon/2.0,latc)
@@ -374,16 +413,54 @@ elif not(dx is None) and not(dy is None) and not (Lx is None) and not (Ly is Non
 
 	dlon = 1.0/dg_lon
 	dlat = 1.0/dg_lat
-
 else:
 	print " error: either (dlon,dlat) and (Llon,Llat) or (dx,dy) and (Lx,Ly) must be specified!"
 	sys.exit(1)
+
+if ws_profile is None:
+	print "    {:20s}: not supplied, setting windspeed constant with height".format("ws-z-profile")
+	ws_profile='const'
+	
+if ws is None:
+	print "    {:20s}: no backgrond windspeed supplied, using ws=10m/s".format("ws")
+	ws = 10.0
+	
+if ws_angle is None:
+	print "    {:20s}: no angle supplied, using ws_angle=270.0 degree (westwind)".format("ws_angle")
+	ws_angle_0	= 270.0
+	ws_angle	= ws_angle_0+90.0		# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
+else:
+	ws_angle_0	= ws_angle
+	ws_angle	+=90.0				# add 90 degrees so that sin and cos yield values that match the orientation (N..0,E..90,S..180,W..270)
+
+if Nz is None:
+	print "    {:20s}: number of z-levels not supplied, using Nz=30".format("Nz")
+	Nz = 30
+
+if dlonf is None:
+	dlonf = dlon
+
+	
+if dlatf is None:
+	dlatf = dlat
+
+if ztop is None:
+	print "    {:20s}: top level height above topography not supplied, using ztop=40km".format("ztop")
+	ztop = 40.0
+	
+if Nbvconst == True:
+	print "    {:20s}: calculating potential temperature so that N =={:8.4f} is constant".format("N",Nbv)
+else:
+	print "    {:20s}: calculating potential temperature from T and p".format("N")	
+
 
 upstream	= set_upstream(ws_angle_0)
 dz			= ztop*1000.0/float(Nz)						# thickness of layers in m
 dg_lon		= haversine(lonc-0.5,latc,lonc+0.5,latc)	# km per degree of longitude
 dg_lat		= haversine(lonc,latc-0.5,lonc,latc+0.5)	# km per degree of latitude
 
+
+# CALCULATE NUMBER OF GRID CELLS FOR HIGH-RES TOPOGRAPHY
 Nlon = int(np.ceil(Llon/dlon))							# grid cells along longitudinal axis
 if Nlon % 2 == 0:										# go for uneven number of grid cells so that
 	Nlon+=1												# N=0 is at lonc
@@ -399,6 +476,7 @@ print "    1 deg. longitude   : {:2.0f}km".format(dg_lon)
 print "    1 deg. latitude    : {:2.0f}km".format(dg_lat)
 print "    *"
 print "    dlon,dlat          : {:6.2f} '      {:6.2f}'".format(dlon*60.0,dlat*60.0)
+print "    dlonf,dlatf        : {:6.2f} '      {:6.2f}'".format(dlonf*60.0,dlatf*60.0)
 print "    dx,dy              : {:6.2f} km     {:6.2f} km".format(dx,dy)
 print "    domain extension   : {:6.2f} deg.   {:6.2f} deg.".format(Llon,Llat)
 print "    domain extension   : {:6.2f} km     {:6.2f} km".format(Lx,Ly)
@@ -411,26 +489,24 @@ print "    upstream           : {:2s}".format(upstream)
 
 if rh is not None:
 	print "    rh upstream        : {:3.1f} %".format(rh)
-	
-# generate the grid
 
-Nlon_l = -(Nlon-1.0)/2.0				# lowest longitudinal N 
-Nlon_h = -Nlon_l						# highest longitudinal N
-Nlat_l = -(Nlat-1.0)/2.0				# lowest latitudinal N
-Nlat_h = -Nlat_l						# highest latitudinal N
-
-lonN=np.arange(Nlon_l,Nlon_h+1.0,1.0)	# array that contains number of each longitudinal cell
-latN=np.arange(Nlat_l,Nlat_h+1.0,1.0)	# array that contains number of each latitudinal cell
-
-lon=lonN*dlon							# array that contains all discrete longitudes
-lat=latN*dlat							# array that contains all discrete latitudes
-
-lon_gridded, lat_gridded = np.meshgrid(lon, lat)	# grids of longitude and latitude
+# ====================================================================== TOPOGRAPHY
+Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
+lonN,latN,lon_gridded,lat_gridded	= generate_grid(Nlon, dlon, Nlat, dlat)
 
 Ndays		= 1 						# number of days for which forcing should be generated
 Ntime		= Ndays*24
 
 # GENERATE ICAR HIGH RESOLUTION TOPGRAPHY
+# CALCULATE NUMBER OF GRID CELLS FOR HIGH-RES TOPOGRAPHY
+Nlon = int(np.ceil(Llon/dlon))							# grid cells along longitudinal axis
+if Nlon % 2 == 0:										# go for uneven number of grid cells so that
+	Nlon+=1												# N=0 is at lonc
+Nlat = int(np.ceil(Llat/dlat))							# grid cells along latitudinal axis
+if Nlat % 2 == 0:										# see above
+	Nlat+=1
+
+
 i_topo  	= np.empty(Nlat*Nlon).reshape(Nlat,Nlon)	# array that will contain topography elevation in meters
 i_landmask 	= np.ones(Nlat*Nlon).reshape(Nlat,Nlon)	# array that contains the landmask. if topography > 0 => 1, otherwise 0.
 i_xlong_m 	= lon_gridded #np.empty(Nlat*Nlon).reshape(Nlat,Nlon)
@@ -463,6 +539,18 @@ icar_topo_ds	= xa.Dataset(
 						)
 
 icar_topo_ds.to_netcdf("./ideal_output/ideal_topo.nc",format='NETCDF4')	
+
+# ====================================================================== FORCING
+dlon=dlonf
+dlat=dlatf
+Llon=Llon#+3*dlonf
+Llat=Llat#+3*dlatf
+# CALCULATE NUMBER OF GRID CELLS FOR HIGH-RES TOPOGRAPHY
+Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
+lonN,latN,lon_gridded,lat_gridded	= generate_grid(Nlon, dlon, Nlat, dlat)
+
+Ndays		= 1 						# number of days for which forcing should be generated
+Ntime		= Ndays*24
 
 dtime_base  	  = datetime(1900,1,1,0,0,0)
 dtime_start 	  = datetime(2017,1,1,0,0,0)
@@ -498,11 +586,10 @@ print "    *"
 
 p0 			= 101325.0 		# pressure at h=0m, Pa
 
-
 i_xlong[:]	= lon_gridded
 i_xlat[:]	= lat_gridded
 
-# GENERATE ICAR HIGH RESOLUTION FORCING
+# GENERATE ICAR LOW/HIGH RESOLUTION FORCING
 for ntime in range(0,1):
 	mwrite("\r    working on timestep {:3n}/{:3n}".format(ntime+1,Ntime))
 	for nlat,ny in enumerate(latN):
@@ -557,6 +644,7 @@ for ntime in range(1,Ntime):
 	i_tpot[ntime,:] = i_tpot[0,:]#.copy()
 	i_ph[ntime,:] = i_ph[0,:]#.copy()
 	i_sp[ntime,:] = i_sp[0,:]#.copy()
+	i_qvapor[ntime,:] = i_qvapor[0,:]#.copy()
 
 
 
