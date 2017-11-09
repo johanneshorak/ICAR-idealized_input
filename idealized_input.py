@@ -291,7 +291,7 @@ except getopt.GetoptError:
 for opt, arg in opts:
 	#print opt," ",arg
 	if opt in ("-h","--help"):
-		print 'evaluator.py --mode=<mode> --scnconfig=<scenario_config> --reafile=<forcing file> --hrtopo=<high resolution topography>'
+		print_help()
 		sys.exit()
 	elif opt in ("--dlon"):
 		dlon = float(arg)/60.0
@@ -366,12 +366,24 @@ if topo == 'witch':
 		print "  witch of agnesi requires two characteristic parameters:"
 		print ""
 		print "  equation:"
-		print "    h(x) = a0*(a1**2/(a1**2+x**2)"
+		print "    h(x) = a0*(a1**2/(a1**2+x**2))"
 		print ""
 		print "  a0 ... height"
 		print "  a1 ... width"
 		print ""
 		sys.exit(1)
+if topo == 'sine':
+	if a0 is None or a1 is None:
+		print "  sine requires two characteristic parameters:"
+		print ""
+		print "  equation:"
+		print "    h(x) = a0*(0.5+sin((pi/a1)*x))"
+		print ""
+		print "  a0 ... height"
+		print "  a1 ... width"
+		print ""
+		sys.exit(1)
+
 
 
 print "* Checking supplied parameters"
@@ -470,6 +482,7 @@ if Nlat % 2 == 0:										# see above
 
 print "* Generating idealized topography and forcing for ICAR experiment"
 print "-----------------------------------------------------------------"
+print "    topography         : {:s}".format(topo)
 print "    centering longitude: {:2.1f}".format(lonc)
 print "    centering latitude : {:2.1f}".format(latc)
 print "    1 deg. longitude   : {:2.0f}km".format(dg_lon)
@@ -519,8 +532,12 @@ for nlat,ny in enumerate(latN):
 	for nlon,nx in enumerate(lonN):
 		x=nx*dx*1000.0
 		
-		h=a0*(a1**2/(x**2+a1**2))				# topography
-		
+		# topography
+		if topo=="witch":	
+			h=a0*(a1**2/(x**2+a1**2))				
+		elif topo=="sine":
+			h=a0/2.0+a0/2.0*np.sin((np.pi/a1)*(x-a1/2.0))		# sine with the minimum at domain center
+
 		i_topo[nlat,nlon]=h
 		if h <= 0:
 			i_landmask[nlat,nlon]=0				# landmask
@@ -595,8 +612,12 @@ for ntime in range(0,1):
 	for nlat,ny in enumerate(latN):
 		y=ny*dy*1000.0
 		for nlon,nx in enumerate(lonN):
-			x=nx*dx*1000.0				
-			h=a0*(a1**2/(x**2+a1**2))				# topography
+			x=nx*dx*1000.0
+			
+			if topo=="witch":	
+				h=a0*(a1**2/(x**2+a1**2))				# topography
+			elif topo=="sine":
+				h=a0/2.0+a0/2.0*np.sin((np.pi/a1)*(x-a1/2.0))
 			
 			i_hgt[ntime,nlat,nlon] = h
 			i_sp[ntime,nlat,nlon]  = barometric_formula(h)
