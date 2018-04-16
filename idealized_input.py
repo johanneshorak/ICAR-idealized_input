@@ -251,6 +251,17 @@ def calculate_qv_from_rh(rh,prs_sat,prs):
 	result = rh/100.0 * ((c_Rair/c_Rwv)*(prs_sat/prs))
 	return result
 
+def get_topo(x,topo):
+	if topo == 'witch':
+		h=a0*(a1**2/(x**2+a1**2))				# topography
+	elif topo == 'triangle':
+		if np.abs(x) <= a1/2.0:
+				k = np.sign(x)
+				h = -np.sign(x)*x*2.0*(a0/a1)+a0
+		else:
+			#print x," ",Lx/2.0," ",a0, " ",a1
+			h = 0.0
+	return h
 
 def mwrite(string):
 	sys.stdout.write(string)
@@ -364,6 +375,17 @@ if topo is None:	# if topo parameter is not supplied we set to a standard here
 if topo == 'witch':
 	if a0 is None or a1 is None:
 		print "  witch of agnesi requires two characteristic parameters:"
+		print ""
+		print "  equation:"
+		print "    h(x) = a0*(a1**2/(a1**2+x**2)"
+		print ""
+		print "  a0 ... height"
+		print "  a1 ... width"
+		print ""
+		sys.exit(1)
+elif topo == 'triangle':
+	if a0 is None or a1 is None:
+		print "  triangle requires two characteristic parameters:"
 		print ""
 		print "  equation:"
 		print "    h(x) = a0*(a1**2/(a1**2+x**2)"
@@ -518,8 +540,8 @@ for nlat,ny in enumerate(latN):
 	y=ny*dy*1000.0
 	for nlon,nx in enumerate(lonN):
 		x=nx*dx*1000.0
+		h=get_topo(x,topo)
 		
-		h=a0*(a1**2/(x**2+a1**2))				# topography
 		
 		i_topo[nlat,nlon]=h
 		if h <= 0:
@@ -533,8 +555,8 @@ icar_topo_ds	= xa.Dataset(
 								'LANDMASK':(['south_north','west_east'],i_landmask)
 							},
 							coords={
-								'south_north':range(0,Nlat),
-								'west_east':range(0,Nlon)
+								'south_north':np.arange(0,Nlat,1.0),
+								'west_east':np.arange(0,Nlon,1.0)
 							}
 						)
 
@@ -595,8 +617,8 @@ for ntime in range(0,1):
 	for nlat,ny in enumerate(latN):
 		y=ny*dy*1000.0
 		for nlon,nx in enumerate(lonN):
-			x=nx*dx*1000.0				
-			h=a0*(a1**2/(x**2+a1**2))				# topography
+			x = nx*dx*1000.0				
+			h = get_topo(x,topo)
 			
 			i_hgt[ntime,nlat,nlon] = h
 			i_sp[ntime,nlat,nlon]  = barometric_formula(h)
