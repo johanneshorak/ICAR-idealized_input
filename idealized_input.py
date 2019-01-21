@@ -63,8 +63,8 @@ def generate_grid(Nlon, dlon, Nlat, dlat):
 	lonN=np.arange(Nlon_l,Nlon_h+1.0,1.0)	# array that contains number of each longitudinal cell
 	latN=np.arange(Nlat_l,Nlat_h+1.0,1.0)	# array that contains number of each latitudinal cell
 
-	lon=lonN*dlon							# array that contains all discrete longitudes
-	lat=latN*dlat							# array that contains all discrete latitudes
+	lon=lonN*dlon+lonc					# array that contains all discrete longitudes
+	lat=latN*dlat+latc					# array that contains all discrete latitudes
 
 	lon_gridded, lat_gridded = np.meshgrid(lon, lat)	# grids of longitude and latitude
 	return lonN,latN,lon_gridded,lat_gridded
@@ -296,10 +296,11 @@ dlonf=None
 dlatf=None
 outdir='./ideal_output/'    # if specified ICAR options file and jobscript file will be created
 prepsim=False  # set to true if outdir is specified in command line options
+nzicar=None    # number of vertical levels that ICAR simulation should use
 
 # READ COMMAND LINE OPTIONS
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar="])
 	if len(opts)==0:
 		print_help()
 		sys.exit(1)
@@ -353,9 +354,8 @@ for opt, arg in opts:
 	elif opt in ("--outdir"):
 		outdir = str(arg)
 		prepsim = True
-
-ensure_dir(outdir) # ensure that output directory exists, if not create it
-
+	elif opt in ("--nzicar"):
+		nzicar = int(arg)
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -379,7 +379,7 @@ ensure_dir(outdir) # ensure that output directory exists, if not create it
 # a1	... parameter 1 for idealized topography
 
 
-lonc = 0.0	# longitude around which domain is centered
+lonc = 90.0	# longitude around which domain is centered
 latc = 0.0	# latitude around which domain is centered
 
 if topo is None:	# if topo parameter is not supplied we set to a standard here
@@ -495,8 +495,17 @@ else:
 	print("    {:20s}: calculating potential temperature from T and p".format("N"))	
 
 
+if prepsim:
+	outdir = outdir+"_nz{:s}".format(str(nzicar).zfill(2)) # append number of z-levels to outdir
+	if nzicar is None:
+		print("    {:20s}: was told to prepare ICAR simulation, number of vertical levels was not specified!".format("nzicar"))
+		print("    {:20s}: please use option --nzicar [no. of vertical levels]".format(""))
+		sys.exit(1)
+
+ensure_dir(outdir) # ensure that output directory exists, if not create it
+
 upstream	= set_upstream(ws_angle_0)
-dz			= ztop*1000.0/float(Nz)						# thickness of layers in m
+dz		= ztop*1000.0/float(Nz)						# thickness of layers in m
 dg_lon		= haversine(lonc-0.5,latc,lonc+0.5,latc)	# km per degree of longitude
 dg_lat		= haversine(lonc,latc-0.5,lonc,latc+0.5)	# km per degree of latitude
 
@@ -586,7 +595,7 @@ icar_topo_ds	= xa.Dataset(
 print("")
 print("    saving to {:s}_a0_{:n}_a1_{:n}_topo.nc...".format(topo,a0,a1))
 topo_file = "{:s}_a0_{:n}_a1_{:n}_topo.nc".format(topo,a0,a1)
-icar_topo_ds.to_netcdf("./{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
+icar_topo_ds.to_netcdf("{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
 
 # ====================================================================== FORCING
 dlon=dlonf
@@ -729,22 +738,22 @@ icar_forcing_ds.Time.attrs['units']='hours since 1900-01-01'
 icar_forcing_ds.Time.attrs['calendar']='gregorian'
 
 forcing_file = "{:s}_forcing.nc".format(topo)
-icar_forcing_ds.to_netcdf("./{:s}/{:s}".format(outdir,forcing_file),format='NETCDF4')
+icar_forcing_ds.to_netcdf("{:s}/{:s}".format(outdir,forcing_file),format='NETCDF4')
 
 if prepsim:
 	print("    setting up options file for ICAR execution...")
 	print("    *")
-	nzicar = 15
+
 	lutdir = "/glade/u/home/horak/scratch1/sims/LUT/idealized"
 
-	#ensure_dir(lutdir)
+	ensure_dir(lutdir)
 
 	subst_df = pd.DataFrame(
 		columns=['key', 'value'],
 		data=[
 			['%SIM_DESCRIPTION%', "idealized forcing and topography with moisture source upwind"],
-			['%TOPOGRAPHY_FILE%', topo_file],
-			['%FORCING_FILE%', forcing_file],
+			['%TOPOGRAPHY_FILE%', outdir+'/'+topo_file],
+			['%FORCING_FILE%', outdir+'/'+forcing_file],
 			['%SURFACEF_ONLY%', 'false'],
 			['%FORCING_START_DATE%', str(dtime_start.strftime("%Y-%m-%d %H:%M:%S"))],
 			['%MODEL_START_DATE%', str(dtime_start.strftime("%Y-%m-%d %H:%M:%S"))],
