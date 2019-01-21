@@ -13,8 +13,9 @@ import getopt
 import xarray as xa
 import pandas as pd
 import sys
-import glob as glob
+import os as os
 import numpy as np
+import random
 from math import radians, cos, sin, asin, sqrt
 from datetime import datetime,timedelta
 
@@ -48,6 +49,9 @@ def print_help():
 	print '    generates an idealized witch of agnes topography with 100% rh upstream'
 	print '    --dx 1 --dy 1 --Lx 200 --Ly 200 --topo witch --a0 1000 --a1 8000 --Nz 30 --ztop 30 --Nbv 0.01 --rh 100 --ws 10 --ws_angle 270'
 
+def ensure_dir(directory):
+	if not os.path.exists(directory):
+		os.makedirs(directory)
 
 def generate_grid(Nlon, dlon, Nlat, dlat):
 	# generate the grid
@@ -290,10 +294,12 @@ Nbvconst=False
 rh=None
 dlonf=None
 dlatf=None
+outdir='./ideal_output/'    # if specified ICAR options file and jobscript file will be created
+prepsim=False  # set to true if outdir is specified in command line options
 
 # READ COMMAND LINE OPTIONS
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh=","dlonf=","dlatf="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir="])
 	if len(opts)==0:
 		print_help()
 		sys.exit(1)
@@ -344,6 +350,12 @@ for opt, arg in opts:
 		dlonf = float(arg)
 	elif opt in ("--dlatf"):
 		dlatf = float(arg)
+	elif opt in ("--outdir"):
+		outdir = str(arg)
+		prepsim = True
+
+ensure_dir(outdir) # ensure that output directory exists, if not create it
+
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -497,23 +509,28 @@ Nlat = int(np.ceil(Llat/dlat))							# grid cells along latitudinal axis
 if Nlat % 2 == 0:										# see above
 	Nlat+=1
 
-print "* Generating idealized topography and forcing for ICAR experiment"
+# calculate grid-spacing in km for FORCING
+dxf = haversine(lonc - dlonf / 2.0, latc, lonc + dlonf / 2.0, latc)
+dyf = haversine(lonc, latc - dlatf / 2.0, lonc, latc + dlatf / 2.0)
+
+print "* Generating high resolution topography for ICAR experiment"
 print "-----------------------------------------------------------------"
 print "    topography         : {:s}".format(topo)
 print "    centering longitude: {:2.1f}".format(lonc)
 print "    centering latitude : {:2.1f}".format(latc)
 print "    1 deg. longitude   : {:2.0f}km".format(dg_lon)
 print "    1 deg. latitude    : {:2.0f}km".format(dg_lat)
-print "    *"
-print "    dlon,dlat          : {:6.2f} '      {:6.2f}'".format(dlon*60.0,dlat*60.0)
-print "    dlonf,dlatf        : {:6.2f} '      {:6.2f}'".format(dlonf*60.0,dlatf*60.0)
+print "    * -----------------------------------------------------------"
+print "    dlon,dlat          : {:3.2f} deg. {:3.2f} deg.\t{:6.2f} '      {:6.2f}'".format(dlon,dlat,dlon*60.0,dlat*60.0)
+print "    dlonf,dlatf        : {:3.2f} deg. {:3.2f} deg.\t{:6.2f} '      {:6.2f}'".format(dlonf,dlatf,dlonf*60.0,dlatf*60.0)
 print "    dx,dy              : {:6.2f} km     {:6.2f} km".format(dx,dy)
+print "    dxf,dyf            : {:6.2f} km     {:6.2f} km".format(dxf,dyf)
 print "    domain extension   : {:6.2f} deg.   {:6.2f} deg.".format(Llon,Llat)
 print "    domain extension   : {:6.2f} km     {:6.2f} km".format(Lx,Ly)
 print "    Nz                 : {:n}".format(Nz)
 print "    ztop               : {:6.2f} km".format(ztop)
 print "    dz                 : {:6.2f} m".format(dz)
-print "    *"
+print "    * -----------------------------------------------------------"
 print "    grid cells         : {:6n}        {:6n}".format(Nlon,Nlat)
 print "    upstream           : {:2s}".format(upstream)
 
@@ -566,8 +583,10 @@ icar_topo_ds	= xa.Dataset(
 								'west_east':np.arange(0,Nlon,1.0)
 							}
 						)
-
-icar_topo_ds.to_netcdf("./ideal_output/ideal_topo.nc",format='NETCDF4')	
+print ""
+print "    saving to {:s}_a0_{:n}_a1_{:n}_topo.nc...".format(topo,a0,a1)
+topo_file = "{:s}_a0_{:n}_a1_{:n}_topo.nc".format(topo,a0,a1)
+icar_topo_ds.to_netcdf("./{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
 
 # ====================================================================== FORCING
 dlon=dlonf
@@ -618,15 +637,17 @@ p0 			= 101325.0 		# pressure at h=0m, Pa
 i_xlong[:]	= lon_gridded
 i_xlat[:]	= lat_gridded
 
-# GENERATE ICAR LOW/HIGH RESOLUTION FORCING
+flatten_factor = 0.4 # flattens the forcing topography a bit to emulate averaging over HR (quickest way)
+print("      forcing topography is flattened by a factor of {:2.2f}".format(flatten_factor))
+
+# GENERATE ICAR LOW RESOLUTION FORCING
 for ntime in range(0,1):
 	mwrite("\r    working on timestep {:3n}/{:3n}".format(ntime+1,Ntime))
 	for nlat,ny in enumerate(latN):
-		y=ny*dy*1000.0
+		y=ny*dyf*1000.0
 		for nlon,nx in enumerate(lonN):
-			x = nx*dx*1000.0				
-			h = get_topo(x,topo)
-			
+			x = nx*dxf*1000.0
+			h = flatten_factor * get_topo(x,topo)
 			i_hgt[ntime,nlat,nlon] = h
 			i_sp[ntime,nlat,nlon]  = barometric_formula(h)
 			
@@ -663,6 +684,7 @@ for ntime in range(0,1):
 						if rh is not None:
 							#print " qvapor == {:f} at {:n}/{:n}".format(qv,nx,ny)
 							i_qvapor[ntime,nz,nlat,nlon]=qv
+		pltonce = True
 
 for ntime in range(1,Ntime):
 	mwrite("\r    working on timestep {:3n}/{:3n}".format(ntime+1,Ntime))
@@ -675,11 +697,9 @@ for ntime in range(1,Ntime):
 	i_sp[ntime,:] = i_sp[0,:]#.copy()
 	i_qvapor[ntime,:] = i_qvapor[0,:]#.copy()
 
-
-
 print ""
-print "    saving..."
-icar_topo_ds	= xa.Dataset(
+print "    saving to {:s}_forcing.nc...".format(topo)
+icar_forcing_ds	= xa.Dataset(
 							data_vars={
 								'HGT':(['Time','south_north','west_east'],i_hgt),
 								'XLONG':(['Time','south_north','west_east'],i_xlong),
@@ -705,8 +725,62 @@ icar_topo_ds	= xa.Dataset(
 							}
 						)
 
-icar_topo_ds.Time.attrs['units']='hours since 1900-01-01'
-icar_topo_ds.Time.attrs['calendar']='gregorian'
-#print icar_topo_ds.Time.attrs
+icar_forcing_ds.Time.attrs['units']='hours since 1900-01-01'
+icar_forcing_ds.Time.attrs['calendar']='gregorian'
 
-icar_topo_ds.to_netcdf("./ideal_output/ideal_forcing.nc",format='NETCDF4')	
+forcing_file = "{:s}_forcing.nc".format(topo)
+icar_forcing_ds.to_netcdf("./{:s}/{:s}".format(outdir,forcing_file),format='NETCDF4')
+
+if prepsim:
+	print "    setting up options file for ICAR execution..."
+	print "    *"
+	nzicar = 15
+	lutdir = "/glade/u/home/horak/scratch1/sims/LUT/idealized"
+
+	#ensure_dir(lutdir)
+
+	subst_df = pd.DataFrame(
+		columns=['key', 'value'],
+		data=[
+			['%SIM_DESCRIPTION%', "idealized forcing and topography with moisture source upwind"],
+			['%TOPOGRAPHY_FILE%', topo_file],
+			['%FORCING_FILE%', forcing_file],
+			['%SURFACEF_ONLY%', 'false'],
+			['%FORCING_START_DATE%', str(dtime_start.strftime("%Y-%m-%d %H:%M:%S"))],
+			['%MODEL_START_DATE%', str(dtime_start.strftime("%Y-%m-%d %H:%M:%S"))],
+			['%MODEL_STOP_DATE%', str((dtime_end+timedelta(hours=-1)).strftime("%Y-%m-%d %H:%M:%S"))],
+			['%OUTPUT_DIR%', outdir],
+			['%HORIZONTAL_SPACING%', 1000.*dx],
+			['%NZ%', str(nzicar)],
+			['%LUT_DIRFILENAME%','{:s}/{:s}_nz{:s}.nc'.format(lutdir,topo_file.replace('.nc',''),str(nzicar).zfill(2))],
+			['%JOBID%',str(random.randint(1,10000))]
+		]
+	)
+	# read, adjust and write icar options file
+	with open('./data/cheyenne.icar-095.snz_6a.options', 'r') as content_file:
+		content = content_file.read()
+	content_file.close()
+
+	for n in range(len(subst_df)):
+		row = subst_df.iloc[n]
+		content = content.replace(row['key'], str(row['value']))
+
+	with open("{:s}/icar.options".format(outdir), "w") as content_file:
+		content_file.write(content)
+	content_file.close()
+
+
+	# read, adjust and write jobscript file
+	with open('./data/jobscript', 'r') as content_file:
+		content = content_file.read()
+	content_file.close()
+
+	for n in range(len(subst_df)):
+		row = subst_df.iloc[n]
+		content = content.replace(row['key'], str(row['value']))
+
+	with open("{:s}/jobscript".format(outdir), "w") as content_file:
+		content_file.write(content)
+	content_file.close()
+
+
