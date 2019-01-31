@@ -642,7 +642,7 @@ Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
 lonN,latN,lon_gridded,lat_gridded	= generate_grid(Nlon, dlon, Nlat, dlat)
 
 Ndays		= 1 						# number of days for which forcing should be generated
-Ntime		= int((Ndays*24)/dtf)
+Ntime		= int((Ndays*24)/dtf)+1
 
 dtime_base  	  = datetime(1900,1,1,0,0,0)
 dtime_start 	  = datetime(2017,1,1,0,0,0)
@@ -651,7 +651,7 @@ dtime_diff_start  = (dtime_start-dtime_base)
 dtime_diff_end	  = (dtime_end-dtime_base)
 hours_since_start = dtime_diff_start.days*24.0	+ dtime_diff_start.seconds/3600.0
 hours_since_end	  = dtime_diff_end.days*24.0	+ dtime_diff_end.seconds/3600.0
-time_list	= np.arange(hours_since_start,hours_since_end,dtf)
+time_list	= np.arange(hours_since_start,hours_since_end+dtf,dtf)
 
 i_Time		= time_list
 i_hgt 		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
