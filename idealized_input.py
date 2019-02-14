@@ -301,11 +301,12 @@ prepsim=False  # set to true if outdir is specified in command line options
 nzicar=None    # number of vertical levels that ICAR simulation should use
 icaropt=None
 dtf=None       # forcing timestep
+flatten_factor=0.4     # emulate a lower resolution topography and reduce high resolution topo to this fraction
 
 # READ COMMAND LINE OPTIONS
 options=Bunch()
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf=","ffactor="])
 	if len(opts)==0:
 		print_help()
 		sys.exit(1)
@@ -368,6 +369,8 @@ for opt, arg in opts:
 		icaropt=arg
 	elif opt in ("--dtf"):
 		dtf=int(arg)
+	elif opt in ("--ffactor"):
+		flatten_factor=float(arg)
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -681,7 +684,7 @@ p0 			= 101325.0 		# pressure at h=0m, Pa
 i_xlong[:]	= lon_gridded
 i_xlat[:]	= lat_gridded
 
-flatten_factor = 0.4 # flattens the forcing topography a bit to emulate averaging over HR (quickest way)
+#flatten_factor = 0.4 # flattens the forcing topography a bit to emulate averaging over HR (quickest way)
 print(("      forcing topography is flattened by a factor of {:2.2f}".format(flatten_factor)))
 
 # GENERATE ICAR LOW RESOLUTION FORCING
