@@ -105,21 +105,21 @@ def set_upstream(ws_angle_0):
 
 def is_upstream(nx,ny,maxLon,maxLat,upstream):
 	#print 'is_upstream ',nx," ",ny," ",maxLon," ",maxLat," ",upstream
-	if upstream == 'n' and ny==0:
+	if upstream == 'n' and ny <= 1:
 		return True
 	elif upstream == 's' and ny==maxLat:
 		return True
 	elif upstream == 'e' and nx==maxLon:
 		return True
-	elif upstream == 'w' and nx==0:
+	elif upstream == 'w' and nx <= 1:
 		return True
-	elif upstream == 'ne' and (nx==maxLon or ny==0):
+	elif upstream == 'ne' and (nx>=maxLon-1 or ny>=1):
 		return True
-	elif upstream == 'se' and (nx==maxLon or ny==maxLat):
+	elif upstream == 'se' and (nx>=maxLon-1 or ny>=maxLat-1):
 		return True
-	elif upstream == 'nw' and (nx==0 or ny==0):
+	elif upstream == 'nw' and (nx<=1 or ny<=1):
 		return True
-	elif upstream == 'sw' and (nx==0 or ny==maxLat):
+	elif upstream == 'sw' and (nx<=1 or ny>=maxLat-1):
 		return True
 	return False
 					
@@ -294,6 +294,7 @@ ztop=None
 Nbv=None
 Nbvconst=False
 rh=None
+rhprofile=None
 dlonf=None
 dlatf=None
 outdir='./ideal_output/'    # if specified ICAR options file and jobscript file will be created
@@ -306,7 +307,7 @@ flatten_factor=0.4     # emulate a lower resolution topography and reduce high r
 # READ COMMAND LINE OPTIONS
 options=Bunch()
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf=","ffactor="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf=","ffactor=","rhprofile="])
 	if len(opts)==0:
 		print_help()
 		sys.exit(1)
@@ -371,6 +372,8 @@ for opt, arg in opts:
 		dtf=int(arg)
 	elif opt in ("--ffactor"):
 		flatten_factor=float(arg)
+	elif opt in ("--rhprofile"):
+		rhprofile=arg
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -389,6 +392,7 @@ for opt, arg in opts:
 # ztop		... how far above the topography the top level is to be placed in km
 # Nbv		... Brunt Vaisala frequency, supply a constant Brunt Vaisala frequency and calculated potential temperature from there in s**-1
 # rh		... relative humidity upstream in %
+# rhprofile     ... specify a rh profile
 # topo	... which topography to use - standard: witch of agnesi
 # a0	... parameter 0 for idealized topography
 # a1	... parameter 1 for idealized topography
@@ -583,6 +587,8 @@ print("    upstream           : {:2s}".format(upstream))
 
 if rh is not None:
 	print("    rh upstream        : {:3.1f} %".format(rh))
+if rhprofile is not None:
+	print("    rh profile         : {:s}".format(rhprofile))
 
 # ====================================================================== TOPOGRAPHY
 Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
@@ -700,7 +706,7 @@ for ntime in range(0,1):
 			
 			for nz in range(0,Nz):
 				zp=nz*dz+dz*0.5							# height of cell center above topograhy
-				z=zp+h									# absolute height
+				z=zp+h								# absolute height
 				
 				u=ws*np.cos(ws_angle*np.pi/180.0)		# U wind component
 				v=ws*np.sin(ws_angle*np.pi/180.0)		# V wind component
@@ -721,16 +727,45 @@ for ntime in range(0,1):
 				
 				psat = calculate_saturation_pressures(t-273.15)
 				
-				if rh is not None:
+				if rh is not None:                                   # if RH is set we calculate qv and set it later for whatever purpose we use it for
 					qv	 = calculate_qv_from_rh(rh,psat,p)
 				
 				
 				# set quantities that are to be advected from upstream
 				if upstream is not None:
 					if is_upstream(nlon,nlat,len(lonN),len(latN),upstream):
-						if rh is not None:
+						if rhprofile is not None:
+							# if a RH profile is specified, implement it here. e.g. 100% humidity cloud btw. 1 and 2 km
+							if rhprofile == 'cloud_z0_1km_z1_3km':
+								if z>= 1000 and z<=3000:
+									i_qvapor[ntime,nz,nlat,nlon] = qv
+								else:
+									i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'cloud_z0_0km_z1_3km':
+                                                                if z>= 0 and z<=3000:
+                                                                        i_qvapor[ntime,nz,nlat,nlon] = qv
+                                                                else:
+                                                                        i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'cloud_z0_0km_z1_4km':
+								if z>= 0 and z<=4000:
+									i_qvapor[ntime,nz,nlat,nlon] = qv
+								else:
+									i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'cloud_z0_0km_z1_6km':
+								if z>= 0 and z<=6000:
+									i_qvapor[ntime,nz,nlat,nlon] = qv
+								else:
+									i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'cloud_z0_1km_z1_3km_below_rh50':
+								if z> 1000 and z<=3000:
+									i_qvapor[ntime,nz,nlat,nlon] = qv
+								elif z <= 1000:
+									i_qvapor[ntime,nz,nlat,nlon] = calculate_qv_from_rh(50,psat,p)
+								else:
+									i_qvapor[ntime,nz,nlat,nlon] = 0
+						elif (rh is not None) and (rhprofile is None):   # set RH only if no rh profile was specified
 							#print " qvapor == {:f} at {:n}/{:n}".format(qv,nx,ny)
-							i_qvapor[ntime,nz,nlat,nlon]=qv
+							i_qvapor[ntime,nz,nlat,nlon] = qv
 		pltonce = True
 
 for ntime in range(1,Ntime):
