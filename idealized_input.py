@@ -817,7 +817,7 @@ if prepsim:
 	print("    setting up options file for ICAR execution...")
 	print("    *")
 
-	lutdir = "/glade/u/home/horak/scratch1/sims/LUT/idealized"
+	lutdir = "/home/c707/c7071062/scratch/icar/results/LUT/idealized/"
 
 	ensure_dir(lutdir)
 
