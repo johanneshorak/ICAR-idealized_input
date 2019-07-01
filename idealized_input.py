@@ -746,6 +746,11 @@ for ntime in range(0,1):
                                                                         i_qvapor[ntime,nz,nlat,nlon] = qv
                                                                 else:
                                                                         i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'cloud_z0_0km_z1_2km':
+                                                                if z>= 0 and z<=2000:
+                                                                        i_qvapor[ntime,nz,nlat,nlon] = qv
+                                                                else:
+                                                                        i_qvapor[ntime,nz,nlat,nlon] = 0
 							elif rhprofile == 'cloud_z0_0km_z1_4km':
 								if z>= 0 and z<=4000:
 									i_qvapor[ntime,nz,nlat,nlon] = qv
