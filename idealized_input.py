@@ -606,7 +606,7 @@ if rhprofile is not None:
 	print("    rh profile         : {:s}".format(rhprofile))
 
 # ====================================================================== TOPOGRAPHY
-Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
+Nlon, Nlat				= get_no_of_gridcells(Llon,dlon,Llat,dlat)
 lonN,latN,lon_gridded,lat_gridded	= generate_grid(Nlon, dlon, Nlat, dlat)
 
 Ndays		= 1 						# number of days for which forcing should be generated
@@ -640,17 +640,17 @@ for nlat,ny in enumerate(latN):
 			i_landmask[nlat,nlon]=0				# landmask
 
 icar_topo_ds	= xa.Dataset(
-							data_vars={
-								'HGT_M':(['south_north','west_east'],i_topo),
-								'XLONG_M':(['south_north','west_east'],i_xlong_m),
-								'XLAT_M':(['south_north','west_east'],i_xlat_m),
-								'LANDMASK':(['south_north','west_east'],i_landmask)
-							},
-							coords={
-								'south_north':np.arange(0,Nlat,1.0),
-								'west_east':np.arange(0,Nlon,1.0)
-							}
-						)
+			data_vars={
+				'HGT_M':(['south_north','west_east'],i_topo),
+				'XLONG_M':(['south_north','west_east'],i_xlong_m),
+				'XLAT_M':(['south_north','west_east'],i_xlat_m),
+				'LANDMASK':(['south_north','west_east'],i_landmask)
+			},
+			coords={
+				'south_north':np.arange(0,Nlat,1.0),
+				'west_east':np.arange(0,Nlon,1.0)
+			}
+		)
 print("")
 print("    saving to {:s}_a0_{:n}_a1_{:n}_topo.nc...".format(topo,a0,a1))
 topo_file = "{:s}_a0_{:n}_a1_{:n}_topo.nc".format(topo,a0,a1)
@@ -659,8 +659,8 @@ icar_topo_ds.to_netcdf("{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
 # ====================================================================== FORCING
 dlon=dlonf
 dlat=dlatf
-Llon=Llon #+4*dlonf
-Llat=Llat #+4*dlatf
+Llon=Llon+dlonf
+Llat=Llat+dlatf
 # CALCULATE NUMBER OF GRID CELLS FOR FORCING
 Nlon, Nlat                            = get_no_of_gridcells(Llon,dlon,Llat,dlat)
 lonN,latN,lon_gridded,lat_gridded     = generate_grid(Nlon, dlon, Nlat, dlat)
@@ -681,11 +681,11 @@ i_Time		= time_list
 i_hgt 		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
 i_xlong		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
 i_xlat		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)
-i_u			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# u component of background flow
-i_v			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# v component of background flow
-i_p			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# pressured at every cell
+i_u			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)	# u component of background flow
+i_v			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)	# v component of background flow
+i_p			= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)	# pressured at every cell
 i_tpot		= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# potential temperatur at every cell
-i_sp		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)		# surface pressure
+i_sp		= np.empty(Ntime*Nlat*Nlon).reshape(Ntime,Nlat,Nlon)			# surface pressure
 i_ph		= np.empty(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# elevation of each cell
 # unused variables
 #i_phb		= np.zeros(Ntime*Nz*Nlat*Nlon).reshape(Ntime,Nz,Nlat,Nlon)		# height base (not used, zero everywhere)
