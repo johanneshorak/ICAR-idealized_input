@@ -551,7 +551,11 @@ if prepsim:
 
 ensure_dir(outdir) # ensure that output directory exists, if not create it
 
-upstream	= set_upstream(ws_angle_0)
+if not (rhprofile is None):
+	upstream	= set_upstream(ws_angle_0)
+else:
+	upstream        = None
+
 dz		= ztop*1000.0/float(Nz)						# thickness of layers in m
 dg_lon		= haversine(lonc-0.5,latc,lonc+0.5,latc)	# km per degree of longitude
 dg_lat		= haversine(lonc,latc-0.5,lonc,latc+0.5)	# km per degree of latitude
@@ -590,7 +594,10 @@ print("    ztop               : {:6.2f} km".format(ztop))
 print("    dz                 : {:6.2f} m".format(dz))
 print("    * -----------------------------------------------------------")
 print("    grid cells         : {:6n}        {:6n}".format(Nlon,Nlat))
-print("    upstream           : {:2s}".format(upstream))
+if not upstream is None:
+	print("    upstream           : {:2s}".format(upstream))
+else:
+        print("    upstream           : {:2s}".format('not relevant'))
 print("    * -----------------------------------------------------------")
 print("    T Surface (Tb)     : {:3.1f}".format(Tb))
 if rh is not None:
@@ -652,11 +659,11 @@ icar_topo_ds.to_netcdf("{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
 # ====================================================================== FORCING
 dlon=dlonf
 dlat=dlatf
-Llon=Llon#+3*dlonf
-Llat=Llat#+3*dlatf
-# CALCULATE NUMBER OF GRID CELLS FOR HIGH-RES TOPOGRAPHY
-Nlon, Nlat							= get_no_of_gridcells(Llon,dlon,Llat,dlat)
-lonN,latN,lon_gridded,lat_gridded	= generate_grid(Nlon, dlon, Nlat, dlat)
+Llon=Llon #+4*dlonf
+Llat=Llat #+4*dlatf
+# CALCULATE NUMBER OF GRID CELLS FOR FORCING
+Nlon, Nlat                            = get_no_of_gridcells(Llon,dlon,Llat,dlat)
+lonN,latN,lon_gridded,lat_gridded     = generate_grid(Nlon, dlon, Nlat, dlat)
 
 Ndays		= 1 						# number of days for which forcing should be generated
 Ntime		= int((Ndays*24)/dtf)+1
@@ -781,6 +788,8 @@ for ntime in range(0,1):
 						elif (rh is not None) and (rhprofile is None):   # set RH only if no rh profile was specified
 							#print " qvapor == {:f} at {:n}/{:n}".format(qv,nx,ny)
 							i_qvapor[ntime,nz,nlat,nlon] = qv
+				else:
+					i_qvapor[ntime,nz,nlat,nlon] = qv
 		pltonce = True
 
 for ntime in range(1,Ntime):
