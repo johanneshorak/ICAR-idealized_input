@@ -73,10 +73,10 @@ def generate_grid(Nlon, dlon, Nlat, dlat):
 
 def get_no_of_gridcells(Llon,dlon,Llat,dlat):
 	Nlon = int(np.ceil(Llon/dlon))							# grid cells along longitudinal axis
-	if Nlon % 2 == 0:										# go for uneven number of grid cells so that
-		Nlon+=1												# N=0 is at lonc
+	if Nlon % 2 == 0:								# go for uneven number of grid cells so that
+		Nlon+=1									# N=0 is at lonc
 	Nlat = int(np.ceil(Llat/dlat))							# grid cells along latitudinal axis
-	if Nlat % 2 == 0:										# see above
+	if Nlat % 2 == 0:								# see above
 		Nlat+=1
 	return Nlon, Nlat
 
@@ -272,6 +272,41 @@ def get_topo(x,topo):
 	elif topo=="sine":
 		h=a0/2.0+a0/2.0*np.sin((np.pi/a1)*(x-a1/2.0))		# sine with the minimum at domain center
 	return h
+
+# calculate density when pressure and potential temperature are given
+# uses ideal gas equation
+def rho_ideal_gas(p,th):
+	RS  = 287.058 # specific gas constant in  J/kgK
+	t   = t_from_tpot(th,p)
+	rho = p/(RS*t)
+
+	return rho
+	
+def p_from_th(p0,z_arr,th_arr):
+	p_arr = np.zeros(len(z_arr))
+
+	for n, z in enumerate(z_arr):
+
+		if n == 0:
+			pm1 = p0
+			dz  = 0
+		else:
+			pm1 = p_arr[n-1]
+			dz  = z_arr[n]-z_arr[n-1]
+
+		rho      = rho_ideal_gas(pm1,th_arr[n])
+		p_arr[n] = pm1+deltap(rho=rho,deltaz=dz)
+
+	return p_arr
+
+def deltap(rho,deltaz):
+
+	if deltaz == 0:
+		dp = 0
+	else:
+		dp = -rho*deltaz*9.81 
+
+	return dp
 
 def mwrite(string):
 	sys.stdout.write(string)
@@ -655,12 +690,13 @@ print("")
 print("    saving to {:s}_a0_{:n}_a1_{:n}_topo.nc...".format(topo,a0,a1))
 topo_file = "{:s}_a0_{:n}_a1_{:n}_topo.nc".format(topo,a0,a1)
 icar_topo_ds.to_netcdf("{:s}/{:s}".format(outdir,topo_file),format='NETCDF4')
-
+dlon_icar = dlon
+dlat_icar = dlat
 # ====================================================================== FORCING
 dlon=dlonf
 dlat=dlatf
-Llon=Llon+dlonf
-Llat=Llat+dlatf
+Llon=Llon+3.*dlon_icar
+Llat=Llat+3.*dlat_icar
 # CALCULATE NUMBER OF GRID CELLS FOR FORCING
 Nlon, Nlat                            = get_no_of_gridcells(Llon,dlon,Llat,dlat)
 lonN,latN,lon_gridded,lat_gridded     = generate_grid(Nlon, dlon, Nlat, dlat)
@@ -724,7 +760,11 @@ for ntime in range(0,1):
 				z=zp+h								# absolute height
 				
 				u=ws*np.cos(ws_angle*np.pi/180.0)		# U wind component
+				if u < 10**-4:
+					u = 0
 				v=ws*np.sin(ws_angle*np.pi/180.0)		# V wind component
+				if v < 10**-4:
+					v = 0
 				p=barometric_formula(z)
 				
 				if Nbvconst == True:
