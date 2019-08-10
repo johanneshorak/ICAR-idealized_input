@@ -139,9 +139,13 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2.0 * asin(sqrt(a)) 
     r = 6371.0 # Radius of earth in kilometers. Use 3956 for miles
     return c * r
+
+def tpot_from_dth(dth,z,Tb=288.15):
+    dth_arr = np.arange(1.,len(z)+1,1.)
+    return Tb+dth_arr*dth
+
     
-def tpot_from_N(N,z):
-	Tb=288.15
+def tpot_from_N(N,z,Tb=288.15):
 	g0=9.80665
 	tpot = Tb*np.exp((N**2/g0)*z)
 	return tpot
@@ -303,11 +307,12 @@ nzicar=None    # number of vertical levels that ICAR simulation should use
 icaropt=None
 dtf=None       # forcing timestep
 flatten_factor=0.4     # emulate a lower resolution topography and reduce high resolution topo to this fraction
+Tb = 288.15    # base temperature at surface. curretnly used if T_from_N is set
 
 # READ COMMAND LINE OPTIONS
 options=Bunch()
 try:
-	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf=","ffactor=","rhprofile="])
+	opts, args = getopt.getopt(sys.argv[1:],"",["dlon=","dlat=","dx=","dy=","Lx=","Ly=","Llon=","Llat=","a0=","a1=","topo=","ws=","ws_angle=","Nz=","Nzf=", "ztop=","Nbv=","rh=","dlonf=","dlatf=","outdir=","nzicar=","icaropt=","dtf=","ffactor=","rhprofile=","Tb="])
 	if len(opts)==0:
 		print_help()
 		sys.exit(1)
@@ -374,6 +379,8 @@ for opt, arg in opts:
 		flatten_factor=float(arg)
 	elif opt in ("--rhprofile"):
 		rhprofile=arg
+	elif opt in ("--Tb"):
+		Tb = float(arg)
 
 # dlon		... longitudinal resolution in degrees
 # dlat		... latitudinal resolution in degrees
@@ -474,8 +481,8 @@ elif not(dx is None) and not(dy is None) and not (Lx is None) and not (Ly is Non
 			angle = test_llat
 	Llat = angle
 
-	dlon = 1.0/dg_lon
-	dlat = 1.0/dg_lat
+	dlon = dx/dg_lon
+	dlat = dy/dg_lat
 
 	options["Llon"] = Llon
 	options["Llat"] = Llat
@@ -584,7 +591,8 @@ print("    dz                 : {:6.2f} m".format(dz))
 print("    * -----------------------------------------------------------")
 print("    grid cells         : {:6n}        {:6n}".format(Nlon,Nlat))
 print("    upstream           : {:2s}".format(upstream))
-
+print("    * -----------------------------------------------------------")
+print("    T Surface (Tb)     : {:3.1f}".format(Tb))
 if rh is not None:
 	print("    rh upstream        : {:3.1f} %".format(rh))
 if rhprofile is not None:
@@ -713,10 +721,10 @@ for ntime in range(0,1):
 				p=barometric_formula(z)
 				
 				if Nbvconst == True:
-					tpot	= tpot_from_N(Nbv,z)
-					t		= t_from_tpot(tpot,p)
+					tpot	= tpot_from_N(Nbv,z,Tb=Tb)
+					t	= t_from_tpot(tpot,p)
 				else:
-					t		= t_of_z(z)
+					t	= t_of_z(z)
 					tpot	= tpot_from_t_and_p(t,p)
 					
 				i_u[ntime,nz,nlat,nlon] = u
@@ -768,6 +776,8 @@ for ntime in range(0,1):
 									i_qvapor[ntime,nz,nlat,nlon] = calculate_qv_from_rh(50,psat,p)
 								else:
 									i_qvapor[ntime,nz,nlat,nlon] = 0
+							elif rhprofile == 'full':
+								i_qvapor[ntime,nz,nlat,nlon] = qv
 						elif (rh is not None) and (rhprofile is None):   # set RH only if no rh profile was specified
 							#print " qvapor == {:f} at {:n}/{:n}".format(qv,nx,ny)
 							i_qvapor[ntime,nz,nlat,nlon] = qv
