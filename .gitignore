@@ -1,0 +1,11 @@
+*.zip
+input_sounding*
+*.nc
+.idea/
+.ipynb_checkpoints/
+Untitled.ipynb
+data/
+idealized_input.py.bak
+lib/
+simtest1/
+wrfinput_d01_modified
